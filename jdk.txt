@@ -1,0 +1,4503 @@
+SP Assignment 1
+
+#include <stdio.h>
+
+#include <stdlib.h>
+
+#include <string.h>
+
+
+
+#define MAX_MOT 20
+
+#define MAX_SYMBOLS 50
+
+#define MAX_LITERALS 50
+
+#define MAX_POOL 20
+
+#define MAX_INTERMEDIATE 100
+
+#define MAX_LINE_LEN 80
+
+
+
+typedef struct {
+
+  char mnemonic[10];
+
+  char class[3]; // IS, DL, AD
+
+  int opcode;
+
+} MOTEntry;
+
+
+
+typedef struct {
+
+  char symbol[10];
+
+  int address;
+
+} SymbolEntry;
+
+
+
+typedef struct {
+
+  char literal[10];
+
+  int address;
+
+} LiteralEntry;
+
+
+
+typedef struct {
+
+  int index;
+
+} PoolEntry;
+
+
+
+typedef struct {
+
+  char code[50];
+
+} IntermediateEntry;
+
+
+
+int main() {
+
+  // Initialize Mnemonic Opcode Table (MOT)
+
+  MOTEntry mot[MAX_MOT] = {
+
+    {"START", "AD", 1},
+
+    {"END", "AD", 2},
+
+    {"ORIGIN", "AD", 3},
+
+    {"EQU", "AD", 4},
+
+    {"LTORG", "AD", 5},
+
+    {"DS", "DL", 1},
+
+    {"DC", "DL", 2},
+
+    {"MOVER", "IS", 1},
+
+    {"MOVEM", "IS", 2},
+
+    {"ADD", "IS", 3},
+
+    {"SUB", "IS", 4},  // Added SUB mnemonic
+
+    {"MULT", "IS", 5},
+
+    {"DIV", "IS", 6},
+
+    {"BC", "IS", 7},
+
+    {"COMP", "IS", 8},
+
+    {"STOP", "IS", 0},
+
+    {"READ", "IS", 9},
+
+    {"PRINT", "IS", 10}
+
+  };
+
+  int mot_count = 18; // Updated count
+
+
+
+  // Initialize tables and counters
+
+  SymbolEntry symtab[MAX_SYMBOLS];
+
+  int sym_count = 0;
+
+
+
+  LiteralEntry littab[MAX_LITERALS];
+
+  int lit_count = 0;
+
+
+
+  PoolEntry pooltab[MAX_POOL];
+
+  int pool_count = 0;
+
+  pooltab[pool_count++].index = 0;
+
+
+
+  IntermediateEntry intermediate[MAX_INTERMEDIATE];
+
+  int inter_count = 0;
+
+
+
+  int lc = 0; // Location counter
+
+
+
+  // Open the input file
+
+  FILE *fp = fopen("input.txt", "r");
+
+  if (fp == NULL) {
+
+    printf("Cannot open input file.\n");
+
+    exit(1);
+
+  }
+
+
+
+  char line[MAX_LINE_LEN];
+
+  while (fgets(line, MAX_LINE_LEN, fp) != NULL) {
+
+    // Remove newline character
+
+    line[strcspn(line, "\n")] = '\0';
+
+
+
+    // Tokenize the line
+
+    char *token = strtok(line, " \t");
+
+    char *tokens[4] = {NULL};
+
+    int token_count = 0;
+
+
+
+    while (token != NULL && token_count < 4) {
+
+      printf("token %d %s\n",token_count,token );
+
+      tokens[token_count++] = token;
+
+      token = strtok(NULL, " \t");
+
+    }
+
+
+
+    char label[10] = "", mnemonic[10] = "", operand1[10] = "", operand2[10] = "";
+
+    int mot_index = -1;
+
+
+
+    if (token_count == 0) {
+
+      // Empty line
+
+      continue;
+
+    }
+
+
+
+    // Check if first token is a mnemonic
+
+    int is_mnemonic = 0;
+
+    for (int i = 0; i < mot_count; i++) {
+
+      if (strcmp(tokens[0], mot[i].mnemonic) == 0) {
+
+        // First token is a mnemonic
+
+        is_mnemonic = 1;
+
+        strcpy(mnemonic, tokens[0]);
+
+        if (token_count > 1) strcpy(operand1, tokens[1]);
+
+        if (token_count > 2) strcpy(operand2, tokens[2]);
+
+        break;
+
+      }
+
+    }
+
+
+
+    if (!is_mnemonic) {
+
+      // First token is not a mnemonic, so it's a label
+
+      strcpy(label, tokens[0]);
+
+      if (token_count > 1) strcpy(mnemonic, tokens[1]);
+
+      if (token_count > 2) strcpy(operand1, tokens[2]);
+
+      if (token_count > 3) strcpy(operand2, tokens[3]);
+
+    }
+
+
+
+    // If label is present, add it to the symbol table
+
+    if (label[0]) {
+
+      int found = 0;
+
+      for (int i = 0; i < sym_count; i++) {
+
+        if (strcmp(symtab[i].symbol, label) == 0) {
+
+          symtab[i].address = lc;
+
+          found = 1;
+
+          break;
+
+        }
+
+      }
+
+      if (!found) {
+
+        strcpy(symtab[sym_count].symbol, label);
+
+        symtab[sym_count].address = lc;
+
+        sym_count++;
+
+      }
+
+    }
+
+
+
+    // Find mnemonic in MOT
+
+    mot_index = -1;
+
+    for (int i = 0; i < mot_count; i++) {
+
+      if (strcmp(mnemonic, mot[i].mnemonic) == 0) {
+
+        mot_index = i;
+
+        break;
+
+      }
+
+    }
+
+
+
+    if (mot_index == -1) {
+
+      printf("Invalid mnemonic: %s\n", mnemonic);
+
+      continue;
+
+    }
+
+
+
+    // Process mnemonic based on its class
+
+    if (strcmp(mot[mot_index].class, "AD") == 0) {
+
+      // Assembler Directive
+
+      if (strcmp(mnemonic, "START") == 0) {
+
+        lc = atoi(operand1);
+
+        sprintf(intermediate[inter_count++].code, "%d\t(AD, %d)\t(C, %d)", lc, mot[mot_index].opcode, lc);
+
+      } else if (strcmp(mnemonic, "END") == 0) {
+
+        sprintf(intermediate[inter_count++].code, "%d\t(AD, %d)", lc, mot[mot_index].opcode);
+
+        // Assign addresses to literals
+
+        for (int i = pooltab[pool_count - 1].index; i < lit_count; i++) {
+
+          littab[i].address = lc++;
+
+          sprintf(intermediate[inter_count++].code, "%d\t(DL, 2)\t(C, %s)", littab[i].address, littab[i].literal + 1);
+
+        }
+
+      } else if (strcmp(mnemonic, "LTORG") == 0) {
+
+        sprintf(intermediate[inter_count++].code, "%d\t(AD, %d)", lc, mot[mot_index].opcode);
+
+        // Assign addresses to literals
+
+        for (int i = pooltab[pool_count - 1].index; i < lit_count; i++) {
+
+          littab[i].address = lc++;
+
+          sprintf(intermediate[inter_count++].code, "%d\t(AD, %d)", lc,mot[mot_index].opcode);
+
+        }
+
+        // Start new pool
+
+        pooltab[pool_count++].index = lit_count;
+
+      }
+
+    } else if (strcmp(mot[mot_index].class, "IS") == 0) {
+
+      char operands[20] = "";
+
+      // Process operand1
+
+      if (operand1[0]) {
+
+        if (operand1[0] == '=') {
+
+          // Literal
+
+          int found = 0;
+
+          for (int i = pooltab[pool_count - 1].index; i < lit_count; i++) {
+
+            if (strcmp(littab[i].literal, operand1) == 0) {
+
+              found = 1;
+
+              break;
+
+            }
+
+          }
+
+          if (!found) {
+
+            strcpy(littab[lit_count++].literal, operand1);
+
+          }
+
+          sprintf(operands, "(L, %d)", lit_count);
+
+        } else {
+
+          // Symbol
+
+          int sym_index = -1;
+
+          for (int i = 0; i < sym_count; i++) {
+
+            if (strcmp(symtab[i].symbol, operand1) == 0) {
+
+              sym_index = i + 1;
+
+              break;
+
+            }
+
+          }
+
+          if (sym_index == -1) {
+
+            strcpy(symtab[sym_count].symbol, operand1);
+
+            symtab[sym_count].address = -1;
+
+            sym_index = sym_count + 1;
+
+            sym_count++;
+
+          }
+
+          sprintf(operands, "(S, %d)", sym_index);
+
+        }
+
+      }
+
+      // Process operand2 if needed
+
+      if (operand2[0]) {
+
+        char temp[20];
+
+        if (operand2[0] == '=') {
+
+          // Literal
+
+          int found = 0;
+
+          for (int i = pooltab[pool_count - 1].index; i < lit_count; i++) {
+
+            if (strcmp(littab[i].literal, operand2) == 0) {
+
+              found = 1;
+
+              break;
+
+            }
+
+          }
+
+          if (!found) {
+
+            strcpy(littab[lit_count++].literal, operand2);
+
+          }
+
+          sprintf(temp, "(L, %d)", lit_count);
+
+        } else {
+
+          // Symbol
+
+          int sym_index = -1;
+
+          for (int i = 0; i < sym_count; i++) {
+
+            if (strcmp(symtab[i].symbol, operand2) == 0) {
+
+              sym_index = i + 1;
+
+              break;
+
+            }
+
+          }
+
+          if (sym_index == -1) {
+
+            strcpy(symtab[sym_count].symbol, operand2);
+
+            symtab[sym_count].address = -1;
+
+            sym_index = sym_count + 1;
+
+            sym_count++;
+
+          }
+
+          sprintf(temp, "(S, %d)", sym_index);
+
+        }
+
+        strcat(operands, "\t");
+
+        strcat(operands, temp);
+
+      }
+
+      sprintf(intermediate[inter_count++].code, "%d\t(IS, %d)\t%s", lc, mot[mot_index].opcode, operands);
+
+      lc++;
+
+    } else if (strcmp(mot[mot_index].class, "DL") == 0) {
+
+      if (strcmp(mnemonic, "DC") == 0) {
+
+        sprintf(intermediate[inter_count++].code, "%d\t(DL, %d)\t(C, %s)", lc, mot[mot_index].opcode, operand1);
+
+        lc++;
+
+      } else if (strcmp(mnemonic, "DS") == 0) {
+
+        int size = atoi(operand1);
+
+        sprintf(intermediate[inter_count++].code, "%d\t(DL, %d)\t(C, %d)", lc, mot[mot_index].opcode, size);
+
+        lc += size;
+
+      }
+
+    }
+
+  }
+
+
+
+  fclose(fp);
+
+
+
+  // Print the Symbol Table
+
+  printf("SYMBOL TABLE\n");
+
+  for (int i = 0; i < sym_count; i++) {
+
+    printf("%s\t%d\n", symtab[i].symbol, symtab[i].address);
+
+  }
+
+
+
+  // Print the Literal Table
+
+  printf("\nLITERAL TABLE\n");
+
+  for (int i = 0; i < lit_count; i++) {
+
+    printf("%s\t%d\n", littab[i].literal, littab[i].address);
+
+  }
+
+
+
+  // Print the Pool Table
+
+  printf("\nPOOL TABLE\n");
+
+  for (int i = 0; i < pool_count; i++) {
+
+    printf("%d\n", pooltab[i].index + 1);
+
+  }
+
+
+
+  // Print the Intermediate Code
+
+  printf("\nINTERMEDIATE CODE\n");
+
+  for (int i = 0; i < inter_count; i++) {
+
+    printf("%s\n", intermediate[i].code);
+
+  }
+
+
+
+  return 0;
+
+}
+
+
+
+
+
+
+
+
+
+SPass1
+
+import java.io.BufferedReader; 
+
+import java.io.BufferedWriter; 
+
+import java.io.FileReader; 
+
+import java.io.FileWriter; 
+
+import java.io.IOException; 
+
+import java.util.ArrayList; 
+
+import java.util.List; 
+
+ 
+
+class SP_1 { 
+
+  static final int MAX_SYMBOLS = 100; 
+
+  static final int MAX_CODE_LINES = 100; 
+
+  static final int MAX_LITERALS = 100; 
+
+  static final int MAX_LINE_LENGTH = 100; 
+
+ 
+
+  static class MOTEntry { 
+
+    String name; 
+
+    String type; 
+
+    int opcode; 
+
+    int size; // Add size field 
+
+ 
+
+    MOTEntry(String name, String type, int opcode, int size) { 
+
+      this.name = name; 
+
+      this.type = type; 
+
+      this.opcode = opcode; 
+
+      this.size = size; // Initialize size 
+
+    } 
+
+  } 
+
+ 
+
+  static class Register { 
+
+    String name; 
+
+    String name1; 
+
+    int code; 
+
+ 
+
+    Register(String name, String name1, int code) { 
+
+      this.name = name; 
+
+      this.name1 = name1; 
+
+      this.code = code; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Symbol { 
+
+    String name; 
+
+    int address; 
+
+ 
+
+    Symbol(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Literal { 
+
+    String name; 
+
+    int address; 
+
+ 
+
+    Literal(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+ 
+
+  static class IntermediateCode { 
+
+    String operation; 
+
+    int code; 
+
+    int reg; 
+
+    String operandType; 
+
+    int operandValue; 
+
+    int lc; 
+
+ 
+
+    IntermediateCode(String operation, int code, int reg, String 
+
+operandType, int operandValue, int lc) { 
+
+      this.operation = operation; 
+
+      this.code = code; 
+
+      this.reg = reg; 
+
+      this.operandType = operandType; 
+
+      this.operandValue = operandValue; 
+
+      this.lc = lc; 
+
+    } 
+
+  } 
+
+ 
+
+  static MOTEntry[] mot = { 
+
+    new MOTEntry("ADD", "IS", 20, 2), 
+
+    new MOTEntry("SUB", "IS", 21, 3), 
+
+    new MOTEntry("MUL", "IS", 22, 2), 
+
+    new MOTEntry("MOVER", "IS", 23, 2), 
+
+    new MOTEntry("MOV", "IS", 24, 2), 
+
+    new MOTEntry("MOVEM", "IS", 25, 2), 
+
+    new MOTEntry("BC", "IS", 26, 2), 
+
+    new MOTEntry("DIV", "IS", 27, 2), 
+
+    new MOTEntry("START", "AD", 10, 0), 
+
+    new MOTEntry("END", "AD", 11, 0), 
+
+    new MOTEntry("ORIGIN", "AD", 12, 0), 
+
+    new MOTEntry("EQU", "AD", 13, 0), 
+
+    new MOTEntry("LTORG", "AD", 14, 0), 
+
+    new MOTEntry("DS", "DL", 1, 1), 
+
+    new MOTEntry("DC", "DL", 2, 1) 
+
+  }; 
+
+ 
+
+  static Register[] registers = { 
+
+    new Register("AREG", "R", 1), 
+
+    new Register("BREG", "R", 2), 
+
+    new Register("CREG", "R", 3), 
+
+    new Register("DREG", "R", 4) 
+
+  }; 
+
+ 
+
+  static List<Symbol> symbolTable = new ArrayList<>(); 
+
+  static List<Literal> literalTable = new ArrayList<>(); 
+
+  static List<IntermediateCode> intermediateCode = new ArrayList<>(); 
+
+  static int locationCounter = 0; 
+
+ 
+
+  static void processLine(String line) { 
+
+    String label = null, opcode = null, operand1 = null, operand2 = null; 
+
+    String[] tokens = line.split("[ ,\t]+"); 
+
+    if (tokens.length == 0) return; 
+
+    int index = 0; 
+
+   
+
+    // Check if the first token is a label 
+
+    if (tokens[index].endsWith(":")) { 
+
+      label = tokens[index++]; 
+
+    } else if (tokens[index].equalsIgnoreCase("START") || 
+
+tokens[index].equalsIgnoreCase("END") || isMnemonic(tokens[index])) { 
+
+      // No label; proceed with opcode and operands 
+
+    } else { 
+
+      label = tokens[index++]; 
+
+    } 
+
+   
+
+    if (index < tokens.length) opcode = tokens[index++]; 
+
+    if (index < tokens.length) operand1 = tokens[index++]; 
+
+    if (index < tokens.length) operand2 = tokens[index]; 
+
+   
+
+    // Add label to symbol table if it is not a register or constant 
+
+    if (label != null && !isRegister(label) && !isConstant(label)) { 
+
+      // Check if the label already exists in the symbol table 
+
+      boolean isDuplicate = false; 
+
+      for (Symbol s : symbolTable) { 
+
+        if (s.name.equals(label)) { 
+
+          isDuplicate = true; 
+
+          break; 
+
+        } 
+
+      } 
+
+      if (!isDuplicate) { 
+
+        symbolTable.add(new Symbol(label, locationCounter)); 
+
+      } 
+
+    } 
+
+   
+
+    // Process opcode 
+
+    if (opcode != null) { 
+
+      boolean found = false; 
+
+      for (MOTEntry motEntry : mot) { 
+
+        if (opcode.equals(motEntry.name)) { 
+
+          found = true; 
+
+          if (motEntry.type != null) { 
+
+            switch (motEntry.type) { 
+
+              case "AD": 
+
+                if ("START".equals(opcode)) { 
+
+                  locationCounter = 
+
+Integer.parseInt(operand1); 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("AD", motEntry.opcode, -1, "C", locationCounter, 
+
+locationCounter)); 
+
+                } else if ("END".equals(opcode)) { 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("AD", motEntry.opcode, -1, null, 0, locationCounter)); 
+
+                } 
+
+                break; 
+
+              case "IS": 
+
+                int regCode = -1; 
+
+                if (operand1 != null) { 
+
+                  for (Register reg : registers) { 
+
+                    if (operand1.equals(reg.name)) { 
+
+                      regCode = reg.code; 
+
+                      break; 
+
+                    } 
+
+                  } 
+
+                  if (regCode == -1) { 
+
+                    System.out.println("Error: Invalid register " + operand1); 
+
+                    return; 
+
+                  } 
+
+                } 
+
+                if (operand2 != null) { 
+
+                  if (operand2.startsWith("=")) { 
+
+                    // Handling literals 
+
+                    boolean isDuplicateLiteral = false; 
+
+                    for (Literal lit : literalTable) { 
+
+                      if (lit.name.equals(operand2)) { 
+
+                        isDuplicateLiteral = true; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                    if (!isDuplicateLiteral) { 
+
+                      literalTable.add(new 
+
+Literal(operand2, -1)); 
+
+                    } 
+
+                    int literalIndex = literalTable.size() - 1; 
+
+                    intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, "L", literalIndex, 
+
+locationCounter)); 
+
+                  } else if (isConstant(operand2)) { 
+
+                    int constantValue = 
+
+Integer.parseInt(operand2); 
+
+                    intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, "C", constantValue, 
+
+locationCounter)); 
+
+                  } else if (isRegister(operand2)) { 
+
+                    int secondRegCode = -1; 
+
+                    for (Register reg : registers) { 
+
+                      if (operand2.equals(reg.name)) { 
+
+                        secondRegCode = reg.code; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                    intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, "R", secondRegCode, 
+
+locationCounter)); 
+
+                  } else { 
+
+                    int symIndex = -1; 
+
+                    for (int j = 0; j < 
+
+symbolTable.size(); j++) { 
+
+                      if 
+
+(operand2.equals(symbolTable.get(j).name)) { 
+
+                        symIndex = j; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                    if (symIndex == -1) { 
+
+                      symbolTable.add(new 
+
+Symbol(operand2, locationCounter)); 
+
+                      symIndex = symbolTable.size() - 1; 
+
+                    } 
+
+                    intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, "S", symIndex, 
+
+locationCounter)); 
+
+                  } 
+
+                } 
+
+                locationCounter += motEntry.size; 
+
+                break; 
+
+              case "DL": 
+
+                if ("DS".equals(opcode)) { 
+
+                  int size = Integer.parseInt(operand1); 
+
+                  symbolTable.get(symbolTable.size() - 
+
+1).address = locationCounter; 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("DL", motEntry.opcode, -1, "C", size, locationCounter)); 
+
+                  locationCounter += size; 
+
+                } else if ("DC".equals(opcode)) { 
+
+                  int value = Integer.parseInt(operand1); 
+
+                  symbolTable.get(symbolTable.size() - 
+
+1).address = locationCounter; 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("DL", motEntry.opcode, -1, "C", value, locationCounter)); 
+
+                  locationCounter++; 
+
+                } 
+
+                break; 
+
+              default: 
+
+                break; 
+
+            } 
+
+          } 
+
+          break; 
+
+        } 
+
+      } 
+
+      if (!found) { 
+
+        System.out.println("Error: Invalid instruction " + opcode); 
+
+      } 
+
+    } 
+
+  } 
+
+   
+
+   
+
+ 
+
+  static boolean isRegister(String token) { 
+
+    for (Register reg : registers) { 
+
+      if (token.equals(reg.name)) { 
+
+        return true; 
+
+      } 
+
+    } 
+
+    return false; 
+
+  } 
+
+ 
+
+  static boolean isConstant(String token) { 
+
+    try { 
+
+      Integer.parseInt(token); 
+
+      return true; 
+
+    } catch (NumberFormatException e) { 
+
+      return false; 
+
+    } 
+
+  } 
+
+ 
+
+  static boolean isMnemonic(String token) { 
+
+    for (MOTEntry motEntry : mot) { 
+
+      if (token.equals(motEntry.name)) { 
+
+        return true; 
+
+      } 
+
+    } 
+
+    return false; 
+
+  } 
+
+ 
+
+  static void readFileAndProcessLines(String filename) throws IOException { 
+
+    try (BufferedReader br = new BufferedReader(new FileReader(filename))) 
+
+{ 
+
+      String line; 
+
+      while ((line = br.readLine()) != null) { 
+
+        processLine(line.trim()); 
+
+      } 
+
+    } 
+
+  } 
+
+ 
+
+  static void writeOutputToFile(String filename) throws IOException { 
+
+    BufferedWriter bw = new BufferedWriter(new FileWriter(filename)); 
+
+   
+
+    bw.write("Symbol Table:\n"); 
+
+    for (int i = 0; i < symbolTable.size(); i++) { 
+
+      bw.write(i + "  " + symbolTable.get(i).name + "  " + 
+
+symbolTable.get(i).address + "\n"); 
+
+    } 
+
+    bw.write("\nIntermediate Code with LC:\n"); 
+
+    bw.write("LC\n"); 
+
+    for (IntermediateCode ic : intermediateCode) { 
+
+      bw.write(ic.lc + " (" + ic.operation + ", " + ic.code + ") "); 
+
+      if (ic.reg != -1) { 
+
+        for (Register reg : registers) { 
+
+          if (reg.code == ic.reg) { 
+
+            bw.write("(" + reg.name1 + ", " + reg.code + ") "); 
+
+            break; 
+
+          } 
+
+        } 
+
+      } 
+
+      if (ic.operandType != null) { 
+
+        bw.write("(" + ic.operandType + ", " + ic.operandValue + ")"); 
+
+      } 
+
+      bw.write("\n"); 
+
+    } 
+
+    bw.close(); 
+
+  } 
+
+   
+
+   
+
+  public static void main(String[] args) { 
+
+    String inputFilename = "input.asm"; 
+
+    String outputFilename = "out.txt"; 
+
+    try { 
+
+      readFileAndProcessLines(inputFilename); 
+
+      writeOutputToFile(outputFilename); 
+
+    } catch (IOException e) { 
+
+      System.out.println("Error: " + e.getMessage()); 
+
+    } 
+
+  } 
+
+} 
+
+
+
+
+
+SPass 2:
+
+import java.io.BufferedReader; 
+
+import java.io.BufferedWriter; 
+
+import java.io.FileReader; 
+
+import java.io.FileWriter; 
+
+import java.io.IOException; 
+
+import java.util.ArrayList; 
+
+import java.util.List; 
+
+ 
+
+class SP_2 { 
+
+  static final int MAX_SYMBOLS = 100; 
+
+  static final int MAX_CODE_LINES = 100; 
+
+  static final int MAX_LITERALS = 100; 
+
+  static final int MAX_LINE_LENGTH = 100; 
+
+ 
+
+  static class MOTEntry { 
+
+    String name; 
+
+    String type; 
+
+    int opcode; 
+
+    int size; 
+
+ 
+
+    MOTEntry(String name, String type, int opcode, int size) { 
+
+      this.name = name; 
+
+      this.type = type; 
+
+      this.opcode = opcode; 
+
+      this.size = size; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Register { 
+
+    String name; 
+
+    String name1; 
+
+    int code; 
+
+ 
+
+    Register(String name, String name1, int code) { 
+
+      this.name = name; 
+
+      this.name1 = name1; 
+
+      this.code = code; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Symbol { 
+
+    String name; 
+
+    int address; 
+
+ 
+
+    Symbol(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Literal { 
+
+    String name; 
+
+    int address; 
+
+ 
+
+    Literal(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+ 
+
+  static class IntermediateCode { 
+
+    String operation; 
+
+    int code; 
+
+    int reg; 
+
+    String operandType; 
+
+    int operandValue; 
+
+    int lc; 
+
+ 
+
+    IntermediateCode(String operation, int code, int reg, String 
+
+operandType, int operandValue, int lc) { 
+
+      this.operation = operation; 
+
+      this.code = code; 
+
+      this.reg = reg; 
+
+      this.operandType = operandType; 
+
+      this.operandValue = operandValue; 
+
+      this.lc = lc; 
+
+    } 
+
+  } 
+
+ 
+
+  static MOTEntry[] mot = { 
+
+    new MOTEntry("ADD", "IS", 20, 2), 
+
+    new MOTEntry("SUB", "IS", 21, 3), 
+
+    new MOTEntry("MUL", "IS", 22, 2), 
+
+    new MOTEntry("MOVER", "IS", 23, 2), 
+
+    new MOTEntry("MOV", "IS", 24, 2), 
+
+    new MOTEntry("MOVEM", "IS", 25, 2), 
+
+    new MOTEntry("BC", "IS", 26, 2), 
+
+    new MOTEntry("DIV", "IS", 27, 2), 
+
+    new MOTEntry("START", "AD", 10, 0), 
+
+    new MOTEntry("END", "AD", 11, 0), 
+
+    new MOTEntry("ORIGIN", "AD", 12, 0), 
+
+    new MOTEntry("EQU", "AD", 13, 0), 
+
+    new MOTEntry("LTORG", "AD", 14, 0), 
+
+    new MOTEntry("DS", "DL", 1, 1), 
+
+    new MOTEntry("DC", "DL", 2, 1) 
+
+  }; 
+
+ 
+
+  static Register[] registers = { 
+
+    new Register("AREG", "R", 1), 
+
+    new Register("BREG", "R", 2), 
+
+    new Register("CREG", "R", 3), 
+
+    new Register("DREG", "R", 4) 
+
+  }; 
+
+ 
+
+  static List<Symbol> symbolTable = new ArrayList<>(); 
+
+  static List<Literal> literalTable = new ArrayList<>(); 
+
+  static List<IntermediateCode> intermediateCode = new ArrayList<>(); 
+
+  static List<Integer> poolTable = new ArrayList<>(); 
+
+  static int locationCounter = 0; 
+
+  static int currentPoolIndex = 0; 
+
+ 
+
+  static void processLine(String line) { 
+
+    String label = null, opcode = null, operand1 = null, operand2 = null; 
+
+    String[] tokens = line.split("[ ,\t]+"); 
+
+    if (tokens.length == 0) return; 
+
+    int index = 0; 
+
+ 
+
+    if (tokens[index].endsWith(":")) { 
+
+      label = tokens[index++].substring(0, tokens[index-1].length() - 
+
+1); 
+
+    } else if (tokens[index].equalsIgnoreCase("START") || 
+
+tokens[index].equalsIgnoreCase("END") || isMnemonic(tokens[index])) { 
+
+      // No label; proceed with opcode and operands 
+
+    } else { 
+
+      label = tokens[index++]; 
+
+    } 
+
+ 
+
+    if (index < tokens.length) opcode = tokens[index++]; 
+
+    if (index < tokens.length) operand1 = tokens[index++]; 
+
+    if (index < tokens.length) operand2 = tokens[index]; 
+
+ 
+
+    if (label != null && !isRegister(label) && !isConstant(label)) { 
+
+      boolean isDuplicate = false; 
+
+      for (Symbol s : symbolTable) { 
+
+        if (s.name.equals(label)) { 
+
+          isDuplicate = true; 
+
+          break; 
+
+        } 
+
+      } 
+
+      if (!isDuplicate) { 
+
+        symbolTable.add(new Symbol(label, locationCounter)); 
+
+      } 
+
+    } 
+
+ 
+
+    if (opcode != null) { 
+
+      boolean found = false; 
+
+      for (MOTEntry motEntry : mot) { 
+
+        if (opcode.equals(motEntry.name)) { 
+
+          found = true; 
+
+          if (motEntry.type != null) { 
+
+            switch (motEntry.type) { 
+
+              case "AD": 
+
+              if ("START".equals(opcode)) { 
+
+                locationCounter = Integer.parseInt(operand1); 
+
+                intermediateCode.add(new 
+
+IntermediateCode("AD", motEntry.opcode, -1, "C", locationCounter, 
+
+locationCounter)); 
+
+              } else if ("END".equals(opcode)) { 
+
+                handleLiterals(); 
+
+                intermediateCode.add(new 
+
+IntermediateCode("AD", motEntry.opcode, -1, null, 0, locationCounter)); 
+
+              } else if ("LTORG".equals(opcode)) { 
+
+                handleLiterals(); 
+
+              } else if ("ORIGIN".equals(opcode)) { 
+
+                locationCounter = Integer.parseInt(operand1); 
+
+                intermediateCode.add(new 
+
+IntermediateCode("AD", motEntry.opcode, -1, "C", locationCounter, 
+
+locationCounter)); 
+
+              } 
+
+              break; 
+
+              case "IS": 
+
+                int regCode = -1; 
+
+                if (operand1 != null) { 
+
+                  for (Register reg : registers) { 
+
+                    if (operand1.equals(reg.name)) { 
+
+                      regCode = reg.code; 
+
+                      break; 
+
+                    } 
+
+                  } 
+
+                  if (regCode == -1) { 
+
+                    System.out.println("Error: Invalid register " + operand1); 
+
+                    return; 
+
+                  } 
+
+                } 
+
+                if (operand2 != null && 
+
+operand2.startsWith("=")) { 
+
+                  String literalValue = 
+
+operand2.substring(1); 
+
+                  int litIndex = -1; 
+
+                  for (int i = 0; i < literalTable.size(); 
+
+i++) { 
+
+                    if 
+
+(literalValue.equals(literalTable.get(i).name)) { 
+
+                      litIndex = i; 
+
+                      break; 
+
+                    } 
+
+                  } 
+
+                  if (litIndex == -1) { 
+
+                    literalTable.add(new 
+
+Literal(literalValue, -1)); 
+
+                    litIndex = literalTable.size() - 1; 
+
+                  } 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, "L", litIndex, 
+
+locationCounter)); 
+
+                } else if (operand2 != null) { 
+
+                  String operandType = "S"; 
+
+                  int operandValue = -1; 
+
+                   
+
+                  if (isConstant(operand2)) { 
+
+                    operandType = "C"; 
+
+                    operandValue = 
+
+Integer.parseInt(operand2); 
+
+                  } else if (isRegister(operand2)) { 
+
+                    operandType = "R"; 
+
+                    for (Register reg : registers) { 
+
+                      if (operand2.equals(reg.name)) { 
+
+                        operandValue = reg.code; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                  } else if (operand2.startsWith("=")) { 
+
+                    String literalValue = 
+
+operand2.substring(1); 
+
+                    int litIndex = -1; 
+
+                    for (int i = 0; i < 
+
+literalTable.size(); i++) { 
+
+                      if 
+
+(literalValue.equals(literalTable.get(i).name)) { 
+
+                        litIndex = i; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                    if (litIndex == -1) { 
+
+                      literalTable.add(new 
+
+Literal(literalValue, -1)); 
+
+                      litIndex = literalTable.size() - 
+
+1; 
+
+                    } 
+
+                    operandType = "L"; 
+
+                    operandValue = litIndex; 
+
+                  } else { 
+
+                    for (int i = 0; i < 
+
+symbolTable.size(); i++) { 
+
+                      if 
+
+(operand2.equals(symbolTable.get(i).name)) { 
+
+                        operandValue = i; 
+
+                        break; 
+
+                      } 
+
+                    } 
+
+                    if (operandValue == -1) { 
+
+                      symbolTable.add(new 
+
+Symbol(operand2, -1)); 
+
+                      operandValue = symbolTable.size() - 1; 
+
+                    } 
+
+                  } 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("IS", motEntry.opcode, regCode, operandType, operandValue, 
+
+locationCounter)); 
+
+                } 
+
+                locationCounter += motEntry.size; 
+
+                break; 
+
+              case "DL": 
+
+                if ("DS".equals(opcode)) { 
+
+                  int size = Integer.parseInt(operand1); 
+
+                  symbolTable.get(symbolTable.size() - 
+
+1).address = locationCounter; 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("DL", motEntry.opcode, -1, "C", size, locationCounter)); 
+
+                  locationCounter += size; 
+
+                } else if ("DC".equals(opcode)) { 
+
+                  int value = Integer.parseInt(operand1); 
+
+                  symbolTable.get(symbolTable.size() - 
+
+1).address = locationCounter; 
+
+                  intermediateCode.add(new 
+
+IntermediateCode("DL", motEntry.opcode, -1, "C", value, locationCounter)); 
+
+                  locationCounter++; 
+
+                } 
+
+                break; 
+
+              default: 
+
+                break; 
+
+            } 
+
+          } 
+
+          break; 
+
+        } 
+
+      } 
+
+      if (!found) { 
+
+        System.out.println("Error: Invalid instruction " + opcode); 
+
+      } 
+
+    } 
+
+  } 
+
+ 
+
+  static void handleLiterals() { 
+
+    boolean newPoolCreated = false; 
+
+    if (literalTable.stream().anyMatch(lit -> lit.address == -1)) { 
+
+      // Add LTORG entry 
+
+      intermediateCode.add(new IntermediateCode("AD", 14, -1, null, 0, 
+
+locationCounter)); 
+
+    } 
+
+    for (int i = 0; i < literalTable.size(); i++) { 
+
+      Literal lit = literalTable.get(i); 
+
+      if (lit.address == -1) { // Not yet assigned 
+
+        if (!newPoolCreated) { 
+
+          poolTable.add(currentPoolIndex); 
+
+          newPoolCreated = true; 
+
+        } 
+
+        lit.address = locationCounter; 
+
+        intermediateCode.add(new IntermediateCode("IS", 24, -1, "L", 
+
+i, locationCounter)); 
+
+        locationCounter += 1; // Adjust for literal size 
+
+        currentPoolIndex++; 
+
+      } 
+
+    } 
+
+  } 
+
+ 
+
+  static boolean isRegister(String token) { 
+
+    for (Register reg : registers) { 
+
+      if (token.equals(reg.name)) { 
+
+        return true; 
+
+      } 
+
+    } 
+
+    return false; 
+
+  } 
+
+ 
+
+  static boolean isConstant(String token) { 
+
+    try { 
+
+      Integer.parseInt(token); 
+
+      return true; 
+
+    } catch (NumberFormatException e) { 
+
+      return false; 
+
+    } 
+
+  } 
+
+ 
+
+  static boolean isMnemonic(String token) { 
+
+    for (MOTEntry motEntry : mot) { 
+
+      if (token.equals(motEntry.name)) { 
+
+        return true; 
+
+      } 
+
+    } 
+
+    return false; 
+
+  } 
+
+ 
+
+  static void readFileAndProcessLines(String filename) throws IOException { 
+
+    try (BufferedReader br = new BufferedReader(new FileReader(filename))) 
+
+{ 
+
+      String line; 
+
+      while ((line = br.readLine()) != null) { 
+
+        processLine(line.trim()); 
+
+      } 
+
+    } 
+
+  } 
+
+ 
+
+  static void writeOutputToFile(String filename) throws IOException { 
+
+    BufferedWriter bw = new BufferedWriter(new FileWriter(filename)); 
+
+   
+
+    bw.write("\nLiteral Table:\n"); 
+
+    for (int i = 0; i < literalTable.size(); i++) { 
+
+      bw.write(i + "  " + literalTable.get(i).name + "  " + 
+
+literalTable.get(i).address + "\n"); 
+
+    } 
+
+   
+
+    bw.write("\nPool Table:\n"); 
+
+    for (int i = 0; i < poolTable.size(); i++) { 
+
+      bw.write(i + "  " + poolTable.get(i) + "\n"); 
+
+    } 
+
+   
+
+    bw.write("\nIntermediate Code with LC:\n"); 
+
+    bw.write("LC\n"); 
+
+    for (IntermediateCode ic : intermediateCode) { 
+
+      // Skip entries that are literal definitions 
+
+      if (ic.operation.equals("IS") && ic.code == 24 && 
+
+ic.operandType.equals("L")) { 
+
+        continue; 
+
+      } 
+
+   
+
+      // Align all entries, including AD statements 
+
+      bw.write(String.format("%-5d", ic.lc)); 
+
+   
+
+      if (ic.operation.equals("AD") && (ic.code == 3 || ic.code == 11)) 
+
+{ 
+
+        bw.write(String.format("(AD,%02d)", ic.code)); 
+
+      } else { 
+
+        bw.write(String.format("(%-2s, %-2d)", ic.operation, 
+
+ic.code)); 
+
+        if (ic.reg != -1) { 
+
+          bw.write(String.format(" (R, %-1d)", ic.reg)); 
+
+        } 
+
+        if (ic.operandType != null) { 
+
+          if (ic.operandType.equals("R")) { 
+
+            bw.write(String.format(" (R, %-1d)", 
+
+ic.operandValue)); 
+
+          } else { 
+
+            bw.write(String.format(" (%-1s, %-1d)", 
+
+ic.operandType, ic.operandValue)); 
+
+          } 
+
+        } 
+
+      } 
+
+      bw.write("\n"); 
+
+    } 
+
+    bw.close(); 
+
+  } 
+
+ 
+
+  public static void main(String[] args) { 
+
+    String inputFilename = "input.asm"; 
+
+    String outputFilename = "out.txt"; 
+
+    try { 
+
+      readFileAndProcessLines(inputFilename); 
+
+      writeOutputToFile(outputFilename); 
+
+    } catch (IOException e) { 
+
+      System.out.println("Error: " + e.getMessage()); 
+
+    } 
+
+  } 
+
+}
+
+
+
+
+
+SPass 3:
+
+import java.io.BufferedReader; 
+
+import java.io.BufferedWriter; 
+
+import java.io.FileReader; 
+
+import java.io.FileWriter; 
+
+import java.io.IOException; 
+
+import java.util.ArrayList; 
+
+import java.util.List; 
+
+ 
+
+class SP_3 { 
+
+  static class MOTEntry { 
+
+    String name; 
+
+    String type; 
+
+    int opcode; 
+
+    int size; 
+
+ 
+
+    MOTEntry(String name, String type, int opcode, int size) { 
+
+      this.name = name; 
+
+      this.type = type; 
+
+      this.opcode = opcode; 
+
+      this.size = size; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Register { 
+
+    String name; 
+
+    int code; 
+
+ 
+
+    Register(String name, int code) { 
+
+      this.name = name; 
+
+      this.code = code; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Symbol { 
+
+    String name; 
+
+    int address; 
+
+ 
+
+    Symbol(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+ 
+
+  static class IntermediateCode { 
+
+    String operation; 
+
+    int code; 
+
+    int reg1; 
+
+    int reg2; 
+
+    String operandType; 
+
+    int operandValue; 
+
+    int lc; 
+
+ 
+
+    IntermediateCode(String operation, int code, int reg1, int reg2, 
+
+String operandType, int operandValue, int lc) { 
+
+      this.operation = operation; 
+
+      this.code = code; 
+
+      this.reg1 = reg1; 
+
+      this.reg2 = reg2; 
+
+      this.operandType = operandType; 
+
+      this.operandValue = operandValue; 
+
+      this.lc = lc; 
+
+    } 
+
+  } 
+
+ 
+
+  static class MachineCode { 
+
+    int lc; 
+
+    String binaryCode; 
+
+ 
+
+    MachineCode(int lc, String binaryCode) { 
+
+      this.lc = lc; 
+
+      this.binaryCode = binaryCode; 
+
+    } 
+
+  } 
+
+ 
+
+  static class Literal { 
+
+    String name; 
+
+    int address; 
+
+   
+
+    Literal(String name, int address) { 
+
+      this.name = name; 
+
+      this.address = address; 
+
+    } 
+
+  } 
+
+   
+
+  static List<Symbol> symbolTable = new ArrayList<>(); 
+
+  static List<Literal> literalTable = new ArrayList<>(); 
+
+  static List<IntermediateCode> intermediateCode = new ArrayList<>(); 
+
+   
+
+  static List<MachineCode> generateMachineCode() { 
+
+    List<MachineCode> machineCodeList = new ArrayList<>(); 
+
+   
+
+    for (IntermediateCode ic : intermediateCode) { 
+
+      if (ic.operation.equals("IS")) { 
+
+        StringBuilder machineInstruction = new StringBuilder(); 
+
+        machineInstruction.append(String.format("%02d", ic.code)); 
+
+         
+
+        if (ic.reg1 != -1) { 
+
+          machineInstruction.append(" ").append(ic.reg1); 
+
+        } else { 
+
+          machineInstruction.append(" 00"); 
+
+        } 
+
+   
+
+        if (ic.reg2 != -1) { 
+
+          machineInstruction.append(" ").append(ic.reg2); 
+
+        } else if (ic.operandType != null) { 
+
+          switch (ic.operandType) { 
+
+            case "S": 
+
+              int symbolAddress = 
+
+symbolTable.get(ic.operandValue).address; 
+
+              machineInstruction.append(" ").append(symbolAddress); 
+
+              break; 
+
+            case "L": 
+
+              int literalAddress = 
+
+literalTable.get(ic.operandValue).address; 
+
+              machineInstruction.append(" ").append(literalAddress); 
+
+              break; 
+
+            case "C": 
+
+              machineInstruction.append(" ").append(ic.operandValue); 
+
+              break; 
+
+          } 
+
+        } else { 
+
+          machineInstruction.append(" 000"); 
+
+        } 
+
+   
+
+        machineCodeList.add(new MachineCode(ic.lc, 
+
+machineInstruction.toString().trim())); 
+
+      } else if (ic.operation.equals("DL") && ic.code == 2) { // DC statement 
+
+        machineCodeList.add(new MachineCode(ic.lc, 
+
+String.valueOf(ic.operandValue))); 
+
+      } else if (ic.operation.equals("DL") && ic.code == 1) { // DS statement 
+
+        machineCodeList.add(new MachineCode(ic.lc, "")); // Leave machine code blank for DS 
+
+      } 
+
+    } 
+
+   
+
+    return machineCodeList; 
+
+  } 
+
+   
+
+  static void writeOutputToFile(String filename, List<MachineCode> 
+
+machineCodeList) throws IOException { 
+
+    BufferedWriter bw = new BufferedWriter(new FileWriter(filename)); 
+
+   
+
+    // Write Symbol Table 
+
+    bw.write("Symbol Table:\n"); 
+
+    for (int i = 0; i < symbolTable.size(); i++) { 
+
+      bw.write(i + "  " + symbolTable.get(i).name + "  " + 
+
+symbolTable.get(i).address + "\n"); 
+
+    } 
+
+   
+
+    // Write Literal Table 
+
+    bw.write("\nLiteral Table:\n"); 
+
+    for (int i = 0; i < literalTable.size(); i++) { 
+
+      bw.write(i + "  " + literalTable.get(i).name + "  " + 
+
+literalTable.get(i).address + "\n"); 
+
+    } 
+
+   
+
+    // Write Intermediate Code 
+
+    bw.write("\nIntermediate Code with LC:\n"); 
+
+    bw.write("LC\n"); 
+
+    for (IntermediateCode ic : intermediateCode) { 
+
+      bw.write(String.format("%-5d", ic.lc)); 
+
+      bw.write(String.format("(%-2s, %2d)", ic.operation, ic.code)); 
+
+      if (ic.reg1 != -1) { 
+
+        bw.write(String.format(" (R, %d)", ic.reg1)); 
+
+      } 
+
+      if (ic.reg2 != -1) { 
+
+        bw.write(String.format(" (R, %d)", ic.reg2)); 
+
+      } else if (ic.operandType != null) { 
+
+        bw.write(String.format(" (%s, %d)", ic.operandType, ic.operandValue)); 
+
+      } 
+
+      bw.write("\n"); 
+
+    } 
+
+   
+
+    // Write Machine Code 
+
+    bw.write("\nMachine Code:\n"); 
+
+    bw.write("LC  Machine Code\n"); 
+
+    for (MachineCode mc : machineCodeList) { 
+
+      bw.write(String.format("%-6d%s\n", mc.lc, mc.binaryCode)); 
+
+    } 
+
+   
+
+    bw.close(); 
+
+  } 
+
+   
+
+  static void readIntermediateCodeFromFile(String filename) throws 
+
+IOException { 
+
+    BufferedReader br = new BufferedReader(new FileReader(filename)); 
+
+    String line; 
+
+    boolean readingSymbolTable = false; 
+
+    boolean readingLiteralTable = false; 
+
+    boolean readingIntermediateCode = false; 
+
+   
+
+    while ((line = br.readLine()) != null) { 
+
+      line = line.trim(); 
+
+      if (line.equals("Symbol Table:")) { 
+
+        readingSymbolTable = true; 
+
+        readingLiteralTable = false; 
+
+        readingIntermediateCode = false; 
+
+        continue; 
+
+      } else if (line.equals("Literal Table:")) { 
+
+        readingSymbolTable = false; 
+
+        readingLiteralTable = true; 
+
+        readingIntermediateCode = false; 
+
+        continue; 
+
+      } else if (line.equals("Intermediate Code with LC:")) { 
+
+        readingSymbolTable = false; 
+
+        readingLiteralTable = false; 
+
+        readingIntermediateCode = true; 
+
+        br.readLine(); // Skip the "LC" line 
+
+        continue; 
+
+      } 
+
+   
+
+      if (readingSymbolTable) { 
+
+        String[] parts = line.split("\\s+"); 
+
+        if (parts.length >= 3) { 
+
+          symbolTable.add(new Symbol(parts[1], 
+
+Integer.parseInt(parts[2]))); 
+
+        } 
+
+      } else if (readingLiteralTable) { 
+
+        String[] parts = line.split("\\s+"); 
+
+        if (parts.length >= 3) { 
+
+          literalTable.add(new Literal(parts[1], 
+
+Integer.parseInt(parts[2]))); 
+
+        } 
+
+      } else if (readingIntermediateCode) { 
+
+        try { 
+
+          String[] parts = line.split("\\s+", 2); 
+
+          if (parts.length >= 2) { 
+
+            int lc = Integer.parseInt(parts[0]); 
+
+            String[] codeParts = parts[1].split("\\)\\s*\\("); 
+
+   
+
+            for (int i = 0; i < codeParts.length; i++) { 
+
+              codeParts[i] = codeParts[i].replaceAll("[()]", "").trim(); 
+
+            } 
+
+   
+
+            String operation = codeParts[0].split(",")[0].trim(); 
+
+            int code = 
+
+Integer.parseInt(codeParts[0].split(",")[1].trim()); 
+
+            int reg1 = -1; 
+
+            int reg2 = -1; 
+
+            String operandType = null; 
+
+            int operandValue = 0; 
+
+   
+
+            if (codeParts.length > 1) { 
+
+              String[] regParts = codeParts[1].split(","); 
+
+              if (regParts[0].trim().equals("R")) { 
+
+                reg1 = Integer.parseInt(regParts[1].trim()); 
+
+              } else { 
+
+                operandType = regParts[0].trim(); 
+
+                operandValue = 
+
+Integer.parseInt(regParts[1].trim()); 
+
+              } 
+
+            } 
+
+            if (codeParts.length > 2) { 
+
+              String[] operandParts = codeParts[2].split(","); 
+
+              if (operandParts[0].trim().equals("R")) { 
+
+                reg2 = 
+
+Integer.parseInt(operandParts[1].trim()); 
+
+              } else { 
+
+                operandType = operandParts[0].trim(); 
+
+                operandValue = 
+
+Integer.parseInt(operandParts[1].trim()); 
+
+              } 
+
+            } 
+
+   
+
+            intermediateCode.add(new IntermediateCode(operation, code, reg1, reg2, operandType, operandValue, lc)); 
+
+          } 
+
+        } catch (NumberFormatException | 
+
+ArrayIndexOutOfBoundsException e) { 
+
+          System.out.println("Error parsing line: " + line); 
+
+          e.printStackTrace(); 
+
+        } 
+
+      } 
+
+    } 
+
+    br.close(); 
+
+  }   
+
+   
+
+  public static void main(String[] args) { 
+
+    String inputFilename = "out.txt"; 
+
+    String outputFilename = "machine_code.txt"; 
+
+    try { 
+
+      readIntermediateCodeFromFile(inputFilename); 
+
+      List<MachineCode> machineCodeList = generateMachineCode(); 
+
+      writeOutputToFile(outputFilename, machineCodeList); 
+
+      System.out.println("Pass-II completed successfully. Output written to " + outputFilename); 
+
+    } catch (IOException e) { 
+
+      System.out.println("Error: " + e.getMessage()); 
+
+    } 
+
+  } 
+
+} 
+
+
+
+
+
+SPass 4:
+
+import java.io.BufferedReader;
+
+import java.io.FileReader;
+
+import java.io.IOException;
+
+import java.util.ArrayList;
+
+import java.util.HashMap;
+
+import java.util.List;
+
+import java.util.Map;
+
+
+
+class SP_4 {
+
+  static class MacroInfo {
+
+    String name;
+
+    int pp, kp, mdtp, kpdtp, sstp, evn;
+
+    List<String> PNTAB = new ArrayList<>(); // Each macro has its own PNTAB
+
+
+
+    MacroInfo(String name, int pp, int kp, int mdtp, int kpdtp, int sstp, int evn) {
+
+      this.name = name;
+
+      this.pp = pp;
+
+      this.kp = kp;
+
+      this.mdtp = mdtp;
+
+      this.kpdtp = kpdtp;
+
+      this.sstp = sstp;
+
+      this.evn = evn;
+
+    }
+
+  }
+
+
+
+  static Map<String, MacroInfo> macroInfoMap = new HashMap<>();
+
+  static List<String> MDT = new ArrayList<>();
+
+  static List<String> KPDTAB = new ArrayList<>();
+
+  static List<String> EVNTAB = new ArrayList<>();
+
+  static List<String> SSNTAB = new ArrayList<>();
+
+  static List<Integer> SSTAB = new ArrayList<>();
+
+  static List<String> PNTAB = new ArrayList<>();
+
+
+
+  public static void main(String[] args) throws IOException {
+
+    BufferedReader br = new BufferedReader(new FileReader("input.txt"));
+
+    String line;
+
+
+
+    while ((line = br.readLine()) != null) {
+
+      if (line.trim().startsWith("MACRO")) {
+
+        processMacroDefinition(br);
+
+      }
+
+    }
+
+
+
+    br.close();
+
+
+
+    // Print all tables with proper labels and index numbers
+
+    System.out.println("Macro Information Table:");
+
+    System.out.println("Name\t#PP\t#KP\t#EV\tMDTP\tKPDTP\tSSTP");
+
+    for (MacroInfo info : macroInfoMap.values()) {
+
+      System.out.printf("%s\t%d\t%d\t%d\t%d\t%d\t%d\n",
+
+        info.name, info.pp, info.kp, info.evn, info.mdtp, info.kpdtp, info.sstp);
+
+    }
+
+
+
+    System.out.println("\nMDT (Macro Definition Table):");
+
+    System.out.println("Index\tDefinition");
+
+    for (int i = 0; i < MDT.size(); i++) {
+
+      System.out.println(i + "\t" + MDT.get(i));
+
+    }
+
+
+
+    // Print separate PNTAB for each macro
+
+    System.out.println("\nPNTAB for INCR Macro:");
+
+    printPNTAB("INCR");
+
+
+
+    System.out.println("\nPNTAB for DECR Macro:");
+
+    printPNTAB("DECR");
+
+
+
+    System.out.println("\nKPDTAB (Keyword Parameter Default Table):");
+
+    System.out.println("Index\tParameter");
+
+    for (int i = 0; i < KPDTAB.size(); i++) {
+
+      System.out.println(i + "\t" + KPDTAB.get(i));
+
+    }
+
+
+
+    System.out.println("\nEVNTAB (Expansion Variable Name Table):");
+
+    System.out.println("Index\tVariable");
+
+    for (int i = 0; i < EVNTAB.size(); i++) {
+
+      System.out.println(i + "\t" + EVNTAB.get(i));
+
+    }
+
+
+
+    System.out.println("\nSSNTAB (Sequencing Symbol Name Table):");
+
+    System.out.println("Index\tSymbol");
+
+    for (int i = 0; i < SSNTAB.size(); i++) {
+
+      System.out.println(i + "\t" + SSNTAB.get(i));
+
+    }
+
+
+
+    System.out.println("\nSSTAB (Sequencing Symbol Table):");
+
+    System.out.println("Index\tMDT Index");
+
+    for (int i = 0; i < SSTAB.size(); i++) {
+
+      System.out.println(i + "\t" + SSTAB.get(i));
+
+    }
+
+  }
+
+
+
+  static void processMacroDefinition(BufferedReader br) throws IOException {
+
+    String line = br.readLine();
+
+    String[] parts = line.trim().split("\\s+");
+
+    String macroName = parts[0];
+
+
+
+    int pp = 0, kp = 0, evn = 0;
+
+    List<String> macroPNTAB = new ArrayList<>();
+
+    MacroInfo currentMacro = new MacroInfo(macroName, 0, 0, MDT.size(), KPDTAB.size(), SSTAB.size(), 0);
+
+
+
+    for (int i = 1; i < parts.length; i++) {
+
+      String paramName = parts[i].substring(1);
+
+      if (paramName.contains("=")) {
+
+        kp++;
+
+        KPDTAB.add(paramName);
+
+        if (!macroPNTAB.contains(paramName.split("=")[0])) {
+
+          macroPNTAB.add(paramName.split("=")[0]);
+
+        }
+
+      } else {
+
+        pp++;
+
+        if (!macroPNTAB.contains(paramName)) {
+
+          macroPNTAB.add(paramName);
+
+        }
+
+      }
+
+    }
+
+
+
+    currentMacro.PNTAB.addAll(macroPNTAB);
+
+
+
+    while (!(line = br.readLine()).trim().equals("MEND")) {
+
+      if (line.trim().startsWith("LCL")) {
+
+        String[] evParts = line.trim().split("\\s+");
+
+        for (int i = 1; i < evParts.length; i++) {
+
+          EVNTAB.add(evParts[i].substring(1));
+
+          evn++;
+
+        }
+
+      } else if (line.contains(".")) {
+
+        String[] ssParts = line.trim().split("\\s+");
+
+        String ssName = ssParts[0].substring(1);
+
+        if (!SSNTAB.contains(ssName)) {
+
+          SSNTAB.add(ssName);
+
+          SSTAB.add(MDT.size());
+
+        }
+
+      }
+
+
+
+      String processedLine = replaceParameters(line, macroPNTAB);
+
+      MDT.add(processedLine);
+
+    }
+
+
+
+    MDT.add("MEND");
+
+
+
+    currentMacro.pp = pp;
+
+    currentMacro.kp = kp;
+
+    currentMacro.evn = evn;
+
+    macroInfoMap.put(macroName, currentMacro);
+
+  }
+
+
+
+  static String replaceParameters(String line, List<String> macroPNTAB) {
+
+    for (int i = 0; i < macroPNTAB.size(); i++) {
+
+      String param = macroPNTAB.get(i).trim().replace(",", "");
+
+      String paramPlaceholder = "&" + param;
+
+      if (line.contains(paramPlaceholder)) {
+
+        line = line.replace(paramPlaceholder, "(P," + i + ")");
+
+      }
+
+    }
+
+
+
+    for (int i = 0; i < EVNTAB.size(); i++) {
+
+      String evnParam = "&" + EVNTAB.get(i).trim();
+
+      if (line.contains(evnParam)) {
+
+        line = line.replace(evnParam, "(E," + i + ")");
+
+      }
+
+    }
+
+
+
+    return line;
+
+  }
+
+
+
+  static void printPNTAB(String macroName) {
+
+    MacroInfo macroInfo = macroInfoMap.get(macroName);
+
+    if (macroInfo != null) {
+
+      System.out.println("Index\tParameter");
+
+      for (int i = 0; i < macroInfo.PNTAB.size(); i++) {
+
+        System.out.println(i + "\t" + macroInfo.PNTAB.get(i));
+
+      }
+
+    } else {
+
+      System.out.println("No PNTAB found for macro: " + macroName);
+
+    }
+
+  }
+
+}
+
+
+
+
+
+SP assignment4:
+
+#include <stdio.h>
+
+#include <string.h>
+
+
+
+#define MAX_SIZE 100
+
+
+
+// Macro Name Table (MNT) entry structure
+
+struct MNTEntry {
+
+ char name[20];
+
+ int pp;       // Number of positional parameters
+
+ int kp;       // Number of keyword parameters
+
+ int mdt_index;   // MDT start index
+
+ int pntab_index;  // PNTAB start index
+
+};
+
+
+
+// Macro Definition Table (MDT) entry structure
+
+struct MDTEntry {
+
+ char definition[100];
+
+};
+
+
+
+// Global tables and counters
+
+struct MNTEntry mnt[MAX_SIZE];
+
+struct MDTEntry mdt[MAX_SIZE];
+
+char kpdt[MAX_SIZE][20]; // Keyword Parameter Default Table (KPDTAB)
+
+char pntab[MAX_SIZE][20]; // Parameter Name Table (PNTAB)
+
+
+
+int mnt_count = 0, mdt_count = 0, kpdt_count = 0, pntab_count = 0;
+
+
+
+void process_macro(FILE *input_file);
+
+void replace_parameters(char *line, char *modified_line, int pntab_start, int pntab_end);
+
+void output_tables();
+
+
+
+int main() {
+
+ FILE *input_file = fopen("input_alp.txt", "r");
+
+ if (!input_file) {
+
+  printf("Error: Could not open input file.\n");
+
+  return 1;
+
+ }
+
+
+
+ // Process each line in the input file
+
+ char line[100];
+
+ while (fgets(line, sizeof(line), input_file)) {
+
+  if (strstr(line, "MACRO")) {
+
+   process_macro(input_file); // Process macro definition
+
+  }
+
+ }
+
+
+
+ fclose(input_file);
+
+
+
+ // Output the tables
+
+ output_tables();
+
+ return 0;
+
+}
+
+
+
+// Function to process a macro definition
+
+void process_macro(FILE *input_file) {
+
+ char line[100];
+
+ fgets(line, sizeof(line), input_file); // Read the macro name and parameters
+
+ line[strcspn(line, "\n")] = 0; // Remove newline character
+
+
+
+ // Parse macro name and parameters
+
+ char *token = strtok(line, " ");
+
+ strcpy(mnt[mnt_count].name, token); // Macro name
+
+ mnt[mnt_count].mdt_index = mdt_count; // MDT index
+
+ mnt[mnt_count].pntab_index = pntab_count; // PNTAB start index
+
+
+
+ int pp = 0, kp = 0;
+
+
+
+ // Process parameters
+
+ while ((token = strtok(NULL, ", ")) != NULL) {
+
+  if (strchr(token, '=')) {
+
+   strcpy(kpdt[kpdt_count++], token); // Keyword parameter
+
+   kp++;
+
+  } else {
+
+   strcpy(pntab[pntab_count++], token); // Positional parameter
+
+   pp++;
+
+  }
+
+ }
+
+ mnt[mnt_count].pp = pp;
+
+ mnt[mnt_count].kp = kp;
+
+ mnt_count++;
+
+
+
+ // Process macro body
+
+ while (fgets(line, sizeof(line), input_file)) {
+
+  line[strcspn(line, "\n")] = 0; // Remove newline character
+
+  if (strcmp(line, "MEND") == 0) {
+
+   strcpy(mdt[mdt_count++].definition, "MEND");
+
+   break;
+
+  }
+
+
+
+  char modified_line[100];
+
+  replace_parameters(line, modified_line, mnt[mnt_count - 1].pntab_index, pntab_count);
+
+  strcpy(mdt[mdt_count++].definition, modified_line);
+
+ }
+
+}
+
+
+
+// Function to replace parameters with indices
+
+void replace_parameters(char *line, char *modified_line, int pntab_start, int pntab_end) {
+
+ char *token = strtok(line, " ");
+
+ strcpy(modified_line, token);
+
+ strcat(modified_line, " ");
+
+
+
+ char *operand = strtok(NULL, ", ");
+
+ while (operand != NULL) {
+
+  int found = 0;
+
+  for (int i = pntab_start; i < pntab_end; i++) {
+
+   if (strcmp(operand, pntab[i]) == 0) {
+
+    char temp[10];
+
+    sprintf(temp, "(P,%d)", i - pntab_start + 1);
+
+    strcat(modified_line, temp);
+
+    found = 1;
+
+    break;
+
+   }
+
+  }
+
+  if (!found) {
+
+   strcat(modified_line, operand);
+
+  }
+
+  operand = strtok(NULL, ", ");
+
+  if (operand != NULL) strcat(modified_line, ",");
+
+ }
+
+}
+
+
+
+// Function to output all tables
+
+void output_tables() {
+
+ // MNT
+
+ printf("\nMacro Name Table (MNT):\n");
+
+ printf("-------------------------------------------\n");
+
+ printf("| Name | #PP | #KP | MDT Index | PNTAB Index |\n");
+
+ printf("-------------------------------------------\n");
+
+ for (int i = 0; i < mnt_count; i++) {
+
+  printf("| %-6s | %-3d | %-3d | %-9d | %-11d |\n",
+
+      mnt[i].name, mnt[i].pp, mnt[i].kp, mnt[i].mdt_index, mnt[i].pntab_index);
+
+ }
+
+ printf("\n");
+
+
+
+ // MDT
+
+ printf("Macro Definition Table (MDT):\n");
+
+ printf("-------------------------------\n");
+
+ printf("| Index | Definition     |\n");
+
+ printf("-------------------------------\n");
+
+ for (int i = 0; i < mdt_count; i++) {
+
+  printf("| %-5d | %-20s |\n", i, mdt[i].definition);
+
+ }
+
+ printf("\n");
+
+
+
+ // PNTAB
+
+ printf("Parameter Name Table (PNTAB):\n");
+
+ printf("-----------------\n");
+
+ printf("| Index | Parameter |\n");
+
+ printf("-----------------\n");
+
+ for (int i = 0; i < pntab_count; i++) {
+
+  printf("| %-5d | %-9s |\n", i, pntab[i]);
+
+ }
+
+ printf("\n");
+
+
+
+ // KPDTAB
+
+ printf("Keyword Parameter Default Table (KPDTAB):\n");
+
+ printf("-----------------\n");
+
+ printf("| Index | Parameter |\n");
+
+ printf("-----------------\n");
+
+ for (int i = 0; i < kpdt_count; i++) {
+
+  printf("| %-5d | %-9s |\n", i, kpdt[i]);
+
+ }
+
+ printf("\n");
+
+}
+
+
+
+
+
+SPass 5:
+
+import java.io.BufferedReader; 
+
+import java.io.FileReader; 
+
+import java.io.FileWriter; 
+
+import java.io.IOException; 
+
+import java.io.PrintWriter; 
+
+import java.util.ArrayList; 
+
+import java.util.Arrays; 
+
+import java.util.HashMap; 
+
+import java.util.List; 
+
+import java.util.Map; 
+
+ 
+
+public class SP_5 { 
+
+  // File names 
+
+  private static final String PREVIOUS_OUTPUT_FILE = "output.txt"; 
+
+  private static final String MACRO_CALL_INPUT_FILE = "input1.txt"; 
+
+  private static final String EXPANDED_OUTPUT_FILE = "expanded_output.txt"; 
+
+ 
+
+  static class MacroInfo { 
+
+    String name; 
+
+    int pp, kp, mdtp, kpdtp, sstp, evn; 
+
+    List<String> PNTAB = new ArrayList<>(); 
+
+ 
+
+    MacroInfo(String name, int pp, int kp, int mdtp, int kpdtp, int sstp, 
+
+int evn) { 
+
+      this.name = name; 
+
+      this.pp = pp; 
+
+      this.kp = kp; 
+
+      this.mdtp = mdtp; 
+
+      this.kpdtp = kpdtp; 
+
+      this.sstp = sstp; 
+
+      this.evn = evn; 
+
+    } 
+
+  } 
+
+ 
+
+  static Map<String, MacroInfo> macroInfoMap = new HashMap<>(); 
+
+  static List<String> MDT = new ArrayList<>(); 
+
+  static List<String> KPDTAB = new ArrayList<>(); 
+
+  static List<String> EVNTAB = new ArrayList<>(); 
+
+  static List<String> SSNTAB = new ArrayList<>(); 
+
+  static List<Integer> SSTAB = new ArrayList<>(); 
+
+  static List<List<String>> APTAB = new ArrayList<>(); 
+
+ 
+
+  public static void main(String[] args) throws IOException { 
+
+    loadPreviousOutput(PREVIOUS_OUTPUT_FILE); 
+
+    expandMacros(MACRO_CALL_INPUT_FILE, EXPANDED_OUTPUT_FILE); 
+
+    System.out.println("Macro expansion completed. Output written to " + 
+
+EXPANDED_OUTPUT_FILE); 
+
+  } 
+
+ 
+
+  static void loadPreviousOutput(String filename) throws IOException { 
+
+    BufferedReader br = new BufferedReader(new FileReader(filename)); 
+
+    String line; 
+
+    String currentSection = ""; 
+
+ 
+
+    while ((line = br.readLine()) != null) { 
+
+      line = line.trim(); // Remove leading/trailing whitespace 
+
+      if (line.startsWith("Macro Information Table:")) { 
+
+        currentSection = "MNT"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (line.startsWith("MDT (Macro Definition Table):")) { 
+
+        currentSection = "MDT"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (line.startsWith("KPDTAB (Keyword Parameter Default 
+
+Table):")) { 
+
+        currentSection = "KPDTAB"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (line.startsWith("EVNTAB (Expansion Variable Name 
+
+Table):")) { 
+
+        currentSection = "EVNTAB"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (line.startsWith("SSNTAB (Sequencing Symbol Name 
+
+Table):")) { 
+
+        currentSection = "SSNTAB"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (line.startsWith("SSTAB (Sequencing Symbol Table):")) { 
+
+        currentSection = "SSTAB"; 
+
+        br.readLine(); // Skip header 
+
+      } else if (!line.isEmpty()) { 
+
+        switch (currentSection) { 
+
+          case "MNT": 
+
+            String[] mntParts = line.split("\\s+"); 
+
+            if (mntParts.length >= 7) { 
+
+              try { 
+
+                MacroInfo info = new MacroInfo(mntParts[0], 
+
+                  Integer.parseInt(mntParts[1]), 
+
+                  Integer.parseInt(mntParts[2]), 
+
+                  Integer.parseInt(mntParts[4]), 
+
+                  Integer.parseInt(mntParts[5]), 
+
+                  Integer.parseInt(mntParts[6]), 
+
+                  Integer.parseInt(mntParts[3])); 
+
+                macroInfoMap.put(mntParts[0], info); 
+
+              } catch (NumberFormatException e) { 
+
+                System.err.println("Error parsing MNT line: " 
+
++ Arrays.toString(mntParts)); 
+
+              } 
+
+            } 
+
+            break; 
+
+          case "MDT": 
+
+            MDT.add(line.split("\\s+", 2)[1]); 
+
+            break; 
+
+          case "KPDTAB": 
+
+            KPDTAB.add(line.split("\\s+", 2)[1]); 
+
+            break; 
+
+          case "EVNTAB": 
+
+            EVNTAB.add(line.split("\\s+", 2)[1]); 
+
+            break; 
+
+          case "SSNTAB": 
+
+            SSNTAB.add(line.split("\\s+", 2)[1]); 
+
+            break; 
+
+          case "SSTAB": 
+
+            SSTAB.add(Integer.parseInt(line.split("\\s+", 2)[1])); 
+
+            break; 
+
+        } 
+
+      } 
+
+    } 
+
+    br.close(); 
+
+ 
+
+    // Load PNTAB for each macro 
+
+    for (MacroInfo info : macroInfoMap.values()) { 
+
+      String[] mdtLineParts = MDT.get(info.mdtp).split("\\s+"); 
+
+      for (int i = 0; i < info.pp + info.kp; i++) { 
+
+        if (i + 1 < mdtLineParts.length) { 
+
+          info.PNTAB.add(mdtLineParts[i + 1].substring(1)); 
+
+        } else { 
+
+          info.PNTAB.add("PARAM" + i); // Handle missing parameters 
+
+        } 
+
+      } 
+
+    } 
+
+  } 
+
+ 
+
+  static void expandMacros(String inputFile, String outputFile) throws 
+
+IOException { 
+
+    BufferedReader br = new BufferedReader(new FileReader(inputFile)); 
+
+    PrintWriter pw = new PrintWriter(new FileWriter(outputFile)); 
+
+    String line; 
+
+ 
+
+    pw.println("Expanded Code:"); 
+
+    pw.println("=============="); 
+
+ 
+
+    while ((line = br.readLine()) != null) { 
+
+      String[] parts = line.trim().split("\\s+"); 
+
+      if (macroInfoMap.containsKey(parts[0])) { 
+
+        expandMacroCall(parts, pw); 
+
+      } else { 
+
+        pw.println(line); 
+
+      } 
+
+    } 
+
+ 
+
+    br.close(); 
+
+ 
+
+    // Print APTAB in a tabular format 
+
+    pw.println("\nAPTAB (Actual Parameter Table):"); 
+
+    pw.println("==============================="); 
+
+    for (int i = 0; i < APTAB.size(); i++) { 
+
+      pw.println("Macro Call " + (i + 1) + ":"); 
+
+      pw.println("Index\tValue"); 
+
+      for (int j = 0; j < APTAB.get(i).size(); j++) { 
+
+        pw.println(j + "\t" + APTAB.get(i).get(j)); 
+
+      } 
+
+      pw.println(); // Add a blank line between macro calls 
+
+    } 
+
+ 
+
+    pw.close(); 
+
+  } 
+
+ 
+
+  static void expandMacroCall(String[] parts, PrintWriter pw) { 
+
+    String macroName = parts[0]; 
+
+    MacroInfo info = macroInfoMap.get(macroName); 
+
+    List<String> actualParams = new 
+
+ArrayList<>(Arrays.asList(parts).subList(1, parts.length)); 
+
+     
+
+    List<String> aptabEntry = new ArrayList<>(info.PNTAB); 
+
+    for (int i = 0; i < actualParams.size(); i++) { 
+
+      if (i < info.pp) { 
+
+        if (i < aptabEntry.size()) { 
+
+          aptabEntry.set(i, actualParams.get(i)); 
+
+        } else { 
+
+          aptabEntry.add(actualParams.get(i)); 
+
+        } 
+
+      } else { 
+
+        String[] keywordParam = actualParams.get(i).split("="); 
+
+        int index = aptabEntry.indexOf(keywordParam[0]); 
+
+        if (index != -1) { 
+
+          aptabEntry.set(index, keywordParam[1]); 
+
+        } 
+
+      } 
+
+    } 
+
+    APTAB.add(aptabEntry); 
+
+ 
+
+    for (int i = info.mdtp + 1; i < MDT.size() && 
+
+!MDT.get(i).equals("MEND"); i++) { 
+
+String expandedLine = expandMacroLine(MDT.get(i), APTAB.size() - 
+
+1); 
+
+pw.println(expandedLine); 
+
+} 
+
+} 
+
+static String expandMacroLine(String line, int aptabIndex) { 
+
+for (int i = 0; i < APTAB.get(aptabIndex).size(); i++) { 
+
+line = line.replace("(P," + i + ")", 
+
+APTAB.get(aptabIndex).get(i)); 
+
+} 
+
+for (int i = 0; i < EVNTAB.size(); i++) { 
+
+line = line.replace("(E," + i + ")", EVNTAB.get(i)); 
+
+} 
+
+return line; 
+
+} 
+
+}
+
+
+
+SPass 6:
+
+import java.io.BufferedReader;
+
+import java.io.FileReader;
+
+import java.io.IOException;
+
+import java.util.ArrayList;
+
+import java.util.Arrays;
+
+import java.util.List;
+
+import java.util.regex.Matcher;
+
+import java.util.regex.Pattern;
+
+
+
+public class SP_6 {
+
+
+
+  // Define token patterns using regular expressions
+
+  private static final List<TokenPattern> TOKEN_PATTERNS = Arrays.asList(
+
+    new TokenPattern("KEYWORD", "\\b(int|float|if|else|while|return)\\b"),
+
+    new TokenPattern("IDENTIFIER", "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"),
+
+    new TokenPattern("NUMBER", "\\b\\d+(\\.\\d+)?\\b"), // Integer or Float
+
+    new TokenPattern("OPERATOR", "[+\\-*/%=]"),
+
+    new TokenPattern("PUNCTUATOR", "[{}();,]"),
+
+    new TokenPattern("NEWLINE", "\\n"),
+
+    new TokenPattern("SKIP", "[ \t]+"), // Spaces and tabs
+
+    new TokenPattern("MISMATCH", ".") // Any unrecognized character (error)
+
+  );
+
+
+
+  // Arrays for storing tokens by type
+
+  private static final List<String> keywords = new ArrayList<>();
+
+  private static final List<String> identifiers = new ArrayList<>();
+
+  private static final List<String> numbers = new ArrayList<>();
+
+  private static final List<String> operators = new ArrayList<>();
+
+  private static final List<String> punctuators = new ArrayList<>();
+
+
+
+  public static void main(String[] args) {
+
+    // Specify the input file here
+
+    String filename = "SP6_input.c"; // Change this to your input file's name
+
+
+
+    try {
+
+      List<Token> tokens = analyzeFile(filename);
+
+      printTokens(tokens);
+
+    } catch (IOException e) {
+
+      System.err.println("Error reading file: " + e.getMessage());
+
+    }
+
+  }
+
+
+
+  // Tokenize the input file line-by-line
+
+  private static List<Token> analyzeFile(String filename) throws IOException {
+
+    List<Token> tokens = new ArrayList<>();
+
+    try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
+
+      String line;
+
+      int lineNumber = 1;
+
+
+
+      while ((line = reader.readLine()) != null) {
+
+        tokens.addAll(tokenizeLine(line, lineNumber));
+
+        lineNumber++;
+
+      }
+
+    }
+
+    return tokens;
+
+  }
+
+
+
+  // Tokenize a single line of input
+
+  private static List<Token> tokenizeLine(String line, int lineNumber) {
+
+    List<Token> tokens = new ArrayList<>();
+
+    Matcher matcher = buildMatcher(line);
+
+
+
+    while (matcher.find()) {
+
+      for (TokenPattern pattern : TOKEN_PATTERNS) {
+
+        if (matcher.group(pattern.type) != null) {
+
+          String lexeme = matcher.group(pattern.type);
+
+
+
+          switch (pattern.type) {
+
+            case "NEWLINE", "SKIP" -> {
+
+              // Skip these tokens
+
+            }
+
+            case "MISMATCH" -> 
+
+              System.err.printf("Error: Unexpected character '%s' on line %d%n", lexeme, lineNumber);
+
+            default -> {
+
+              int tokenValue = addToSpecificArray(pattern.type, lexeme);
+
+              tokens.add(new Token(lineNumber, lexeme, pattern.type, tokenValue));
+
+            }
+
+          }
+
+          break;
+
+        }
+
+      }
+
+    }
+
+    return tokens;
+
+  }
+
+
+
+  // Add token to its respective array and return its index within that array (1-based)
+
+  private static int addToSpecificArray(String type, String lexeme) {
+
+    List<String> targetList;
+
+
+
+    switch (type) {
+
+      case "KEYWORD" -> targetList = keywords;
+
+      case "IDENTIFIER" -> targetList = identifiers;
+
+      case "NUMBER" -> targetList = numbers;
+
+      case "OPERATOR" -> targetList = operators;
+
+      case "PUNCTUATOR" -> targetList = punctuators;
+
+      default -> throw new IllegalStateException("Unexpected token type: " + type);
+
+    }
+
+
+
+    // Check if the lexeme already exists in the list
+
+    if (!targetList.contains(lexeme)) {
+
+      targetList.add(lexeme); // Add only if it's not already there
+
+    }
+
+
+
+    // Return the 1-based index of the lexeme in the list
+
+    return targetList.indexOf(lexeme) + 1;
+
+  }
+
+
+
+  // Build the regex matcher for the line using all token patterns
+
+  private static Matcher buildMatcher(String line) {
+
+    StringBuilder regex = new StringBuilder();
+
+    for (TokenPattern pattern : TOKEN_PATTERNS) {
+
+      regex.append(String.format("|(?<%s>%s)", pattern.type, pattern.regex));
+
+    }
+
+    return Pattern.compile(regex.substring(1)).matcher(line); // Skip leading "|"
+
+  }
+
+
+
+  // Print the tokens in a table-like format
+
+  private static void printTokens(List<Token> tokens) {
+
+    System.out.printf("%-5s %-15s %-15s %-15s%n", "Line", "Lexeme", "Token Type", "Token Value");
+
+    System.out.println("--------------------------------------------------------------");
+
+    for (Token token : tokens) {
+
+      System.out.printf("%-5d %-15s %-15s %-15d%n", token.lineNumber, token.lexeme, token.type, token.tokenValue);
+
+    }
+
+  }
+
+
+
+  // Class to store token information
+
+  private static class Token {
+
+    int lineNumber;
+
+    String lexeme;
+
+    String type;
+
+    int tokenValue;
+
+
+
+    Token(int lineNumber, String lexeme, String type, int tokenValue) {
+
+      this.lineNumber = lineNumber;
+
+      this.lexeme = lexeme;
+
+      this.type = type;
+
+      this.tokenValue = tokenValue;
+
+    }
+
+  }
+
+
+
+  // Class to store token pattern (type and regex)
+
+  private static class TokenPattern {
+
+    String type;
+
+    String regex;
+
+
+
+    TokenPattern(String type, String regex) {
+
+      this.type = type;
+
+      this.regex = regex;
+
+    }
+
+  }
+
+}
+
+
+
+
+
+
+
+SP Assignment 6:
+
+#include <stdio.h>
+
+#include <ctype.h>
+
+#include <string.h>
+
+
+
+#define MAX_LEN 100
+
+
+
+// Token types
+
+typedef enum {
+
+  IDENTIFIER,
+
+  KEYWORD,
+
+  NUMBER,
+
+  OPERATOR,
+
+  SYMBOL,
+
+  PUNCTUATOR,
+
+  UNKNOWN
+
+} TokenType;
+
+
+
+// List of keywords
+
+const char *keywords[] = {
+
+  "int", "float", "if", "else", "while", "for", "return", "void"
+
+};
+
+
+
+// List of operators
+
+const char *operators[] = {
+
+  "+", "-", "*", "/", "=", "==", "!=", "<", ">", "<=", ">="
+
+};
+
+
+
+// List of symbols
+
+const char symbols[] = {
+
+  '(', ')', '{', '}', '[', ']', ';', ','
+
+};
+
+
+
+// Function to check if a string is a keyword
+
+int isKeyword(const char *str) {
+
+  for (int i = 0; i < sizeof(keywords) / sizeof(char*); i++) {
+
+    if (strcmp(str, keywords[i]) == 0)
+
+      return i + 1; // Return index + 1 as Token Value
+
+  }
+
+  return 0;
+
+}
+
+
+
+// Function to check if a string is an operator
+
+int isOperator(const char *str) {
+
+  for (int i = 0; i < sizeof(operators) / sizeof(char*); i++) {
+
+    if (strcmp(str, operators[i]) == 0)
+
+      return i + 1; // Return index + 1 as Token Value
+
+  }
+
+  return 0;
+
+}
+
+
+
+// Function to check if a character is a symbol
+
+int isSymbol(char ch) {
+
+  for (int i = 0; i < sizeof(symbols) / sizeof(char); i++) {
+
+    if (ch == symbols[i])
+
+      return i + 1; // Return index + 1 as Token Value
+
+  }
+
+  return 0;
+
+}
+
+
+
+// Function to check if a character is a punctuator
+
+int isPunctuator(char ch) {
+
+  return ispunct(ch) && !isSymbol(ch);
+
+}
+
+
+
+int main() {
+
+  FILE *fp;
+
+  char filename[] = "input_code.txt";
+
+  char line[MAX_LEN];
+
+  int line_num = 0;
+
+
+
+  fp = fopen(filename, "r");
+
+  if (fp == NULL) {
+
+    printf("Error: Cannot open input file %s\n", filename);
+
+    return 1;
+
+  }
+
+
+
+  printf("Line\tLexeme\t\tToken Type\t\tToken Value\n");
+
+  printf("---------------------------------------------------------------\n");
+
+
+
+  while (fgets(line, MAX_LEN, fp) != NULL) {
+
+    line_num++;
+
+    int i = 0;
+
+    while (line[i] != '\0') {
+
+      // Skip whitespace
+
+      if (isspace(line[i])) {
+
+        i++;
+
+        continue;
+
+      }
+
+
+
+      char lexeme[MAX_LEN] = {0};
+
+      int lexeme_index = 0;
+
+      TokenType type = UNKNOWN;
+
+      int token_value = 0;
+
+
+
+      // Identifier or Keyword
+
+      if (isalpha(line[i]) || line[i] == '_') {
+
+        while (isalnum(line[i]) || line[i] == '_') {
+
+          lexeme[lexeme_index++] = line[i++];
+
+        }
+
+        lexeme[lexeme_index] = '\0';
+
+
+
+        token_value = isKeyword(lexeme);
+
+        if (token_value) {
+
+          type = KEYWORD;
+
+        } else {
+
+          type = IDENTIFIER;
+
+          token_value = 1; // Use 1 for all identifiers
+
+        }
+
+      }
+
+      // Number
+
+      else if (isdigit(line[i])) {
+
+        while (isdigit(line[i]) || line[i] == '.') {
+
+          lexeme[lexeme_index++] = line[i++];
+
+        }
+
+        lexeme[lexeme_index] = '\0';
+
+        type = NUMBER;
+
+        token_value = 1; // Use 1 for all numbers
+
+      }
+
+      // Operator or Symbol or Punctuator
+
+      else if (ispunct(line[i])) {
+
+        lexeme[lexeme_index++] = line[i++];
+
+        // Check for two-character operators
+
+        if (ispunct(line[i])) {
+
+          lexeme[lexeme_index++] = line[i++];
+
+        }
+
+        lexeme[lexeme_index] = '\0';
+
+
+
+        token_value = isOperator(lexeme);
+
+        if (token_value) {
+
+          type = OPERATOR;
+
+        } else if ((token_value = isSymbol(lexeme[0]))) {
+
+          type = SYMBOL;
+
+          // Adjust index for invalid two-character symbols
+
+          if (lexeme_index > 1) {
+
+            i -= (lexeme_index - 1);
+
+          }
+
+        } else if (isPunctuator(lexeme[0])) {
+
+          type = PUNCTUATOR;
+
+          token_value = 1; // Use 1 for all punctuators
+
+          // Adjust index for invalid two-character punctuators
+
+          if (lexeme_index > 1) {
+
+            i -= (lexeme_index - 1);
+
+          }
+
+        } else {
+
+          type = UNKNOWN;
+
+          token_value = 0; // Unknown token value
+
+        }
+
+      }
+
+      // Unknown token
+
+      else {
+
+        lexeme[lexeme_index++] = line[i++];
+
+        lexeme[lexeme_index] = '\0';
+
+        type = UNKNOWN;
+
+        token_value = 0;
+
+      }
+
+
+
+      // Print the token information
+
+      printf("%d\t%-15s", line_num, lexeme);
+
+      switch (type) {
+
+        case IDENTIFIER:
+
+          printf("IDENTIFIER\t\t%d\n", token_value);
+
+          break;
+
+        case KEYWORD:
+
+          printf("KEYWORD\t\t\t%d\n", token_value);
+
+          break;
+
+        case NUMBER:
+
+          printf("NUMBER\t\t\t%d\n", token_value);
+
+          break;
+
+        case OPERATOR:
+
+          printf("OPERATOR\t\t%d\n", token_value);
+
+          break;
+
+        case SYMBOL:
+
+          printf("SYMBOL\t\t\t%d\n", token_value);
+
+          break;
+
+        case PUNCTUATOR:
+
+          printf("PUNCTUATOR\t\t%d\n", token_value);
+
+          break;
+
+        default:
+
+          printf("UNKNOWN\t\t\t%d\n", token_value);
+
+          break;
+
+      }
+
+    }
+
+  }
+
+
+
+  fclose(fp);
+
+  return 0;
+
+}
