@@ -1,0 +1,53 @@
+Expanded Code:
+==============
+START 
+TEMP SET 0
+.LOOP MOVER PARAM2, NUM1,
+ADD PARAM2, ='1'
+MOVEM PARAM2, NUM1,
+TEMP SET TEMP+1
+AIF (TEMP LT 5,) .LOOP
+VAR SET PARAM2
+.START SUB X,, ='1'
+VAR SET VAR-1
+AIF (VAR GT 10) .START
+MOVER AREG, NUM2 
+TEMP SET 0
+.LOOP MOVER PARAM2, NUM2,
+ADD PARAM2, ='1'
+MOVEM PARAM2, NUM2,
+TEMP SET TEMP+1
+AIF (TEMP LT 3,) .LOOP
+VAR SET PARAM2
+.START SUB Y,, ='1'
+VAR SET VAR-1
+AIF (VAR GT 7,) .START
+ADD AREG, NUM1 
+END 
+
+APTAB (Actual Parameter Table):
+===============================
+Macro Call 1:
+Index	Value
+0	NUM1,
+1	5,
+2	PARAM2
+
+Macro Call 2:
+Index	Value
+0	X,
+1	10
+2	PARAM2
+
+Macro Call 3:
+Index	Value
+0	NUM2,
+1	3,
+2	PARAM2
+
+Macro Call 4:
+Index	Value
+0	Y,
+1	7,
+2	PARAM2
+

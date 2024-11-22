@@ -1,0 +1,55 @@
+Macro Information Table:
+Name    #PP     #KP     #EV     MDTP    KPDTP   SSTP
+INCR    2       1       1       0       0       0
+DECR    2       1       1       8       1       2
+
+MDT (Macro Definition Table):
+Index   Definition
+0       LCL (E,0)
+1       (E,0) SET 0
+2       .LOOP MOVER (P,2), (P,0)
+3       ADD (P,2), ='1'
+4       MOVEM (P,2), (P,0)
+5       (E,0) SET (E,0)+1
+6       AIF ((E,0) LT (P,1)) .LOOP
+7       MEND
+8       LCL (E,1)
+9       (E,1) SET (P,2)
+10      .START SUB (P,0), ='1'
+11      (E,1) SET (E,1)-1
+12      AIF ((E,1) GT (P,1)) .START
+13      MEND
+
+PNTAB for INCR Macro:
+Index   Parameter
+0       ARG1,
+1       ARG2,
+2       REG
+
+PNTAB for DECR Macro:
+Index   Parameter
+0       X,
+1       Y,
+2       Z
+
+KPDTAB (Keyword Parameter Default Table):
+Index   Parameter
+0       REG=AREG
+1       Z=10
+
+EVNTAB (Expansion Variable Name Table):
+Index   Variable
+0       TEMP
+1       VAR
+
+SSNTAB (Sequencing Symbol Name Table):
+Index   Symbol
+0       LOOP
+1       IF
+2       START
+
+SSTAB (Sequencing Symbol Table):
+Index   MDT Index
+0       2
+1       6
+2       10
